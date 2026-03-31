@@ -1,0 +1,26 @@
+command:
+  - "streamlit"
+  - "run"
+  - "app.py"
+
+env:
+  - name: SF_ACCESS_TOKEN
+    valueFrom: sf-access-token-secret
+  - name: SF_INSTANCE_URL
+    valueFrom: sf-instance-url-secret
+  - name: SERVING_ENDPOINT_NAME
+    value: "databricks-claude-sonnet-4"
+
+resources:
+  - name: sf-access-token-secret
+    secret:
+      scope: sf-opportunity-app
+      key: sf-access-token
+      permission: READ
+  - name: sf-instance-url-secret
+    secret:
+      scope: sf-opportunity-app
+      key: sf-instance-url
+      permission: READ
+  - name: serving-endpoint
+    serving_endpoint: databricks-claude-sonnet-4
