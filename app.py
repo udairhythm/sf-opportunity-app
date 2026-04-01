@@ -2,10 +2,12 @@
 
 import json
 from datetime import date, datetime
+from functools import wraps
+from typing import Callable
 
 import pandas as pd
 import streamlit as st
-from simple_salesforce import SalesforceAuthenticationFailed
+from simple_salesforce import SalesforceAuthenticationFailed, SalesforceExpiredSession
 
 import llm_client
 import sf_client
@@ -28,6 +30,30 @@ def init_sf():
         return None, str(e)
 
 
+def reconnect_sf():
+    """Clear SF connection cache and reconnect."""
+    init_sf.clear()
+    load_opportunities.clear()
+    load_accounts.clear()
+    load_stages.clear()
+    return init_sf()
+
+
+def with_sf_retry(func: Callable):
+    """Decorator that retries on expired SF session by reconnecting."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        global sf, sf_error
+        try:
+            return func(*args, **kwargs)
+        except SalesforceExpiredSession:
+            sf, sf_error = reconnect_sf()
+            if sf:
+                return func(*args, **kwargs)
+            raise
+    return wrapper
+
+
 sf, sf_error = init_sf()
 
 # ── Sidebar ────────────────────────────────────────────────────────
@@ -45,19 +71,34 @@ with st.sidebar:
 
 # ── Helpers ────────────────────────────────────────────────────────
 
+@with_sf_retry
+def _fetch_opportunities() -> pd.DataFrame:
+    return sf_client.get_opportunities(sf)
+
+
+@with_sf_retry
+def _fetch_accounts() -> list[str]:
+    return sf_client.get_accounts(sf)
+
+
+@with_sf_retry
+def _fetch_stages() -> list[str]:
+    return sf_client.get_stage_names(sf)
+
+
 @st.cache_data(ttl=60)
 def load_opportunities() -> pd.DataFrame:
-    return sf_client.get_opportunities(sf)
+    return _fetch_opportunities()
 
 
 @st.cache_data(ttl=300)
 def load_accounts() -> list[str]:
-    return sf_client.get_accounts(sf)
+    return _fetch_accounts()
 
 
 @st.cache_data(ttl=300)
 def load_stages() -> list[str]:
-    return sf_client.get_stage_names(sf)
+    return _fetch_stages()
 
 
 def refresh_data():
@@ -205,7 +246,12 @@ def page_opportunities():
                 st.info("変更はありません。")
             else:
                 try:
-                    sf_client.update_opportunity(sf, opp_id, updates)
+
+                    @with_sf_retry
+                    def _update():
+                        sf_client.update_opportunity(sf, opp_id, updates)
+
+                    _update()
                     refresh_data()
                     st.success("商談を更新しました。")
                 except Exception as e:
@@ -213,7 +259,16 @@ def page_opportunities():
 
     # ── Task history ──
     with task_tab:
-        tasks_df = sf_client.get_tasks(sf, opp_id)
+        try:
+
+            @with_sf_retry
+            def _load_tasks():
+                return sf_client.get_tasks(sf, opp_id)
+
+            tasks_df = _load_tasks()
+        except Exception:
+            tasks_df = pd.DataFrame()
+
         if not tasks_df.empty:
             st.dataframe(
                 tasks_df[["件名", "ステータス", "活動日", "説明"]],
@@ -239,10 +294,15 @@ def page_opportunities():
                 st.error("件名は必須です。")
             else:
                 try:
-                    sf_client.create_task(
-                        sf, opp_id, task_subject, task_desc,
-                        task_status, task_date.isoformat(),
-                    )
+
+                    @with_sf_retry
+                    def _create():
+                        sf_client.create_task(
+                            sf, opp_id, task_subject, task_desc,
+                            task_status, task_date.isoformat(),
+                        )
+
+                    _create()
                     st.success("活動を登録しました。")
                 except Exception as e:
                     st.error(f"登録エラー: {e}")
