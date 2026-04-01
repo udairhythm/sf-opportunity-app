@@ -109,6 +109,31 @@ def create_task(
     return result["id"]
 
 
+def create_opportunity(
+    sf: Salesforce,
+    name: str,
+    account_id: str,
+    stage: str,
+    amount: float,
+    close_date: str,
+) -> str:
+    """Create a new Opportunity. Returns the new Opportunity Id."""
+    result = sf.Opportunity.create({
+        "Name": name,
+        "AccountId": account_id,
+        "StageName": stage,
+        "Amount": amount,
+        "CloseDate": close_date,
+    })
+    return result["id"]
+
+
+def get_accounts_with_ids(sf: Salesforce) -> list[dict]:
+    """Fetch Account names and Ids."""
+    records = sf.query_all("SELECT Id, Name FROM Account ORDER BY Name")["records"]
+    return [{"Id": r["Id"], "Name": r["Name"]} for r in records]
+
+
 def get_accounts(sf: Salesforce) -> list[str]:
     """Fetch distinct Account names for filter options."""
     query = """

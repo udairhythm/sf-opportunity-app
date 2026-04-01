@@ -134,6 +134,38 @@ def page_opportunities():
     accounts = load_accounts()
     stages = load_stages()
 
+    # ── New opportunity ──
+    with st.expander("新規商談を作成"):
+        with st.form("create_opp_form"):
+            new_name = st.text_input("商談名")
+            accounts_with_ids = sf_client.get_accounts_with_ids(sf)
+            account_names = [a["Name"] for a in accounts_with_ids]
+            new_account = st.selectbox("取引先", account_names, key="new_opp_account")
+            new_opp_stage = st.selectbox("ステージ", stages, key="new_opp_stage")
+            new_opp_amount = st.number_input("金額 (¥)", value=0, step=10000, key="new_opp_amount")
+            new_opp_close = st.date_input("CloseDate", key="new_opp_close")
+            create_submitted = st.form_submit_button("作成", type="primary")
+
+        if create_submitted:
+            if not new_name:
+                st.error("商談名は必須です。")
+            else:
+                try:
+                    account_id = next(a["Id"] for a in accounts_with_ids if a["Name"] == new_account)
+
+                    @with_sf_retry
+                    def _create_opp():
+                        return sf_client.create_opportunity(
+                            sf, new_name, account_id, new_opp_stage,
+                            new_opp_amount, new_opp_close.isoformat(),
+                        )
+
+                    _create_opp()
+                    refresh_data()
+                    st.success(f"商談「{new_name}」を作成しました。")
+                except Exception as e:
+                    st.error(f"作成エラー: {e}")
+
     if df.empty:
         st.info("商談データがありません。")
         return
