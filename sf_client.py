@@ -24,7 +24,14 @@ def _refresh_access_token(
         },
         timeout=15,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        try:
+            detail = resp.json()
+        except Exception:
+            detail = resp.text
+        raise ValueError(
+            f"Salesforce token refresh failed ({resp.status_code}): {detail}"
+        )
     data = resp.json()
     return data["access_token"], data["instance_url"]
 
