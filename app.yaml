@@ -4,23 +4,30 @@ command:
   - "app.py"
 
 env:
-  - name: SF_ACCESS_TOKEN
-    valueFrom: sf-access-token-secret
-  - name: SF_INSTANCE_URL
-    valueFrom: sf-instance-url-secret
+  - name: SF_REFRESH_TOKEN
+    valueFrom: sf-refresh-token-secret
+  - name: SF_CLIENT_ID
+    valueFrom: sf-client-id-secret
+  - name: SF_LOGIN_URL
+    valueFrom: sf-login-url-secret
   - name: SERVING_ENDPOINT_NAME
     value: "databricks-claude-sonnet-4"
 
 resources:
-  - name: sf-access-token-secret
+  - name: sf-refresh-token-secret
     secret:
       scope: sf-opportunity-app
-      key: sf-access-token
+      key: sf-refresh-token
       permission: READ
-  - name: sf-instance-url-secret
+  - name: sf-client-id-secret
     secret:
       scope: sf-opportunity-app
-      key: sf-instance-url
+      key: sf-client-id
+      permission: READ
+  - name: sf-login-url-secret
+    secret:
+      scope: sf-opportunity-app
+      key: sf-login-url
       permission: READ
   - name: serving-endpoint
     serving_endpoint: databricks-claude-sonnet-4

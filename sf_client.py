@@ -4,22 +4,58 @@ import os
 from typing import Any
 
 import pandas as pd
+import requests
 from simple_salesforce import Salesforce, SalesforceAuthenticationFailed
+
+
+def _refresh_access_token(
+    refresh_token: str, client_id: str, login_url: str
+) -> tuple[str, str]:
+    """Exchange a refresh token for a new access token.
+
+    Returns (access_token, instance_url).
+    """
+    resp = requests.post(
+        f"{login_url}/services/oauth2/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["access_token"], data["instance_url"]
 
 
 def get_connection() -> Salesforce:
     """Establish connection to Salesforce.
 
-    Supports two auth modes:
-    1. Access token + instance URL (SF_ACCESS_TOKEN, SF_INSTANCE_URL)
-    2. Username + password + security token (SF_USERNAME, SF_PASSWORD, SF_SECURITY_TOKEN)
+    Auth priority:
+    1. OAuth refresh token (SF_REFRESH_TOKEN) — auto-renewing
+    2. Access token + instance URL (SF_ACCESS_TOKEN, SF_INSTANCE_URL)
+    3. Username + password + security token
     """
+    # 1. Refresh token (best for long-running apps)
+    refresh_token = os.environ.get("SF_REFRESH_TOKEN", "")
+    client_id = os.environ.get("SF_CLIENT_ID", "PlatformCLI")
+    login_url = os.environ.get("SF_LOGIN_URL", "https://login.salesforce.com")
+
+    if refresh_token:
+        access_token, instance_url = _refresh_access_token(
+            refresh_token, client_id, login_url
+        )
+        return Salesforce(session_id=access_token, instance_url=instance_url)
+
+    # 2. Access token (short-lived)
     access_token = os.environ.get("SF_ACCESS_TOKEN", "")
     instance_url = os.environ.get("SF_INSTANCE_URL", "")
 
     if access_token and instance_url:
         return Salesforce(session_id=access_token, instance_url=instance_url)
 
+    # 3. Username + password + security token
     username = os.environ.get("SF_USERNAME", "")
     password = os.environ.get("SF_PASSWORD", "")
     security_token = os.environ.get("SF_SECURITY_TOKEN", "")
@@ -27,7 +63,8 @@ def get_connection() -> Salesforce:
 
     if not all([username, password, security_token]):
         raise ValueError(
-            "SF_ACCESS_TOKEN+SF_INSTANCE_URL or SF_USERNAME+SF_PASSWORD+SF_SECURITY_TOKEN must be set"
+            "SF_REFRESH_TOKEN, SF_ACCESS_TOKEN+SF_INSTANCE_URL, "
+            "or SF_USERNAME+SF_PASSWORD+SF_SECURITY_TOKEN must be set"
         )
 
     return Salesforce(
